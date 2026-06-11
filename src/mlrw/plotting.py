@@ -1,0 +1,57 @@
+"""Latency comparison plot.
+
+A single grouped bar chart summarises median latency per configuration for each
+model. The plot is written as a PNG and is used both in the README and as a CI
+artifact.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+
+from .artifacts import RunArtifact  # noqa: E402
+
+
+def plot_latency_comparison(artifact: RunArtifact, path: str | Path) -> Path:
+    """Render median latency per configuration, grouped by model."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    models = artifact.models
+    configs = _ordered_configs(artifact)
+    latency = {(r.model, r.config): r.metrics.median_latency_ms for r in artifact.results}
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    n_configs = len(configs)
+    group_width = 0.8
+    bar_width = group_width / max(n_configs, 1)
+
+    for i, config in enumerate(configs):
+        offsets = [j + (i - (n_configs - 1) / 2) * bar_width for j in range(len(models))]
+        heights = [latency.get((model, config), 0.0) for model in models]
+        ax.bar(offsets, heights, width=bar_width, label=config)
+
+    ax.set_xticks(range(len(models)))
+    ax.set_xticklabels(models)
+    ax.set_ylabel("Median latency (ms)")
+    ax.set_title("Median latency by model and execution configuration")
+    ax.legend(title="Configuration")
+    ax.grid(axis="y", linestyle=":", alpha=0.5)
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    return path
+
+
+def _ordered_configs(artifact: RunArtifact) -> list[str]:
+    """Return distinct configuration names in artifact order."""
+    seen: list[str] = []
+    for record in artifact.results:
+        if record.config not in seen:
+            seen.append(record.config)
+    return seen
