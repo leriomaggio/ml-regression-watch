@@ -1,0 +1,271 @@
+{
+  "schema_version": 1,
+  "metadata": {
+    "timestamp": "2026-06-11T21:54:31+00:00",
+    "git_sha": "08e6d70cc2de968901e64880db5cd539f036ec67",
+    "seed": 1234,
+    "hardware": {
+      "platform": "Linux-6.17.0-1018-azure-x86_64-with-glibc2.39",
+      "machine": "x86_64",
+      "processor": "x86_64",
+      "cpu_count": 4,
+      "cuda_available": false
+    },
+    "library_versions": {
+      "python": "3.11.15",
+      "torch": "2.12.0+cpu",
+      "torchvision": "0.27.0+cpu",
+      "transformers": "4.57.6",
+      "numpy": "2.4.6",
+      "scipy": "1.17.1"
+    }
+  },
+  "results": [
+    {
+      "model": "resnet18",
+      "config": "eager_fp32",
+      "device": "cpu",
+      "precision": "fp32",
+      "mode": "eager",
+      "is_baseline": true,
+      "metrics": {
+        "median_latency_ms": 199.40814750000868,
+        "p90_latency_ms": 203.11594199999377,
+        "throughput_items_per_s": 40.11872182905491,
+        "peak_memory_mb": 93.3515625
+      },
+      "latency_samples_ms": [
+        197.1210500000069,
+        198.46318449998535,
+        199.608052500011,
+        196.9786269999929,
+        200.18282899999917,
+        198.96921550000002,
+        200.03567349999685,
+        198.9935989999907,
+        200.90946999999915,
+        200.62784800001054
+      ],
+      "validation": null
+    },
+    {
+      "model": "resnet18",
+      "config": "compile_bf16",
+      "device": "cpu",
+      "precision": "bf16",
+      "mode": "compile",
+      "is_baseline": false,
+      "metrics": {
+        "median_latency_ms": 410.1447804999765,
+        "p90_latency_ms": 412.97517980000293,
+        "throughput_items_per_s": 19.50530734597623,
+        "peak_memory_mb": 65.36328125
+      },
+      "latency_samples_ms": [
+        410.69183099999407,
+        410.78489249998995,
+        409.8786105000016,
+        409.7159825000034,
+        410.6910355000082,
+        409.5967365000064,
+        409.7362879999906,
+        410.78518000000486,
+        411.49495400000546,
+        409.79511000000457
+      ],
+      "validation": {
+        "max_abs_diff": 0.04571533203125,
+        "mean_abs_diff": 0.007849369198083878,
+        "cosine_similarity": 0.999990701675415,
+        "top_k_agreement": 0.95
+      }
+    },
+    {
+      "model": "resnet18",
+      "config": "compile_fp32",
+      "device": "cpu",
+      "precision": "fp32",
+      "mode": "compile",
+      "is_baseline": false,
+      "metrics": {
+        "median_latency_ms": 114.04769399999282,
+        "p90_latency_ms": 119.6328680999784,
+        "throughput_items_per_s": 70.1460916868736,
+        "peak_memory_mb": 18.5703125
+      },
+      "latency_samples_ms": [
+        119.26864349999278,
+        116.76224200002139,
+        116.28241149998075,
+        114.2605145000175,
+        113.39831450001725,
+        112.67012899998008,
+        113.52805749999106,
+        113.04971149999687,
+        114.75459799999044,
+        112.32202049998818
+      ],
+      "validation": {
+        "max_abs_diff": 2.1457672119140625e-06,
+        "mean_abs_diff": 4.0225080510936095e-07,
+        "cosine_similarity": 1.0,
+        "top_k_agreement": 1.0
+      }
+    },
+    {
+      "model": "resnet18",
+      "config": "eager_bf16",
+      "device": "cpu",
+      "precision": "bf16",
+      "mode": "eager",
+      "is_baseline": false,
+      "metrics": {
+        "median_latency_ms": 447.20619550002993,
+        "p90_latency_ms": 450.5844402999969,
+        "throughput_items_per_s": 17.888839824893402,
+        "peak_memory_mb": 4.796875
+      },
+      "latency_samples_ms": [
+        446.93452100000286,
+        447.6130264999938,
+        447.5567220000016,
+        447.0482684999695,
+        448.08872749999296,
+        446.24493899999607,
+        447.1822420000251,
+        449.08271400001354,
+        447.91843950000043,
+        446.76851500000225
+      ],
+      "validation": {
+        "max_abs_diff": 0.029911041259765625,
+        "mean_abs_diff": 0.006044747773557901,
+        "cosine_similarity": 0.9999910593032837,
+        "top_k_agreement": 0.95
+      }
+    },
+    {
+      "model": "distilbert",
+      "config": "eager_fp32",
+      "device": "cpu",
+      "precision": "fp32",
+      "mode": "eager",
+      "is_baseline": true,
+      "metrics": {
+        "median_latency_ms": 175.48532850000242,
+        "p90_latency_ms": 178.59120439997582,
+        "throughput_items_per_s": 45.58785665093301,
+        "peak_memory_mb": 168.359375
+      },
+      "latency_samples_ms": [
+        174.30841050000367,
+        174.07119300000318,
+        171.34636699998396,
+        172.63141649999625,
+        175.5222099999969,
+        176.301704999986,
+        176.91895499999077,
+        177.2402509999722,
+        177.14886499999238,
+        175.7438775000253
+      ],
+      "validation": null
+    },
+    {
+      "model": "distilbert",
+      "config": "compile_bf16",
+      "device": "cpu",
+      "precision": "bf16",
+      "mode": "compile",
+      "is_baseline": false,
+      "metrics": {
+        "median_latency_ms": 677.0536639999989,
+        "p90_latency_ms": 681.6855234999707,
+        "throughput_items_per_s": 11.81590238022848,
+        "peak_memory_mb": 54.859375
+      },
+      "latency_samples_ms": [
+        676.8787874999873,
+        675.7570109999733,
+        675.3349539999931,
+        675.8549739999751,
+        677.419792500018,
+        678.0864824999924,
+        674.2020899999943,
+        679.1228685000021,
+        678.8946854999836,
+        680.8043144999942
+      ],
+      "validation": {
+        "max_abs_diff": 0.03075718879699707,
+        "mean_abs_diff": 0.0018966197967529297,
+        "cosine_similarity": 0.9999798536300659,
+        "top_k_agreement": 0.989453125
+      }
+    },
+    {
+      "model": "distilbert",
+      "config": "compile_fp32",
+      "device": "cpu",
+      "precision": "fp32",
+      "mode": "compile",
+      "is_baseline": false,
+      "metrics": {
+        "median_latency_ms": 167.1058759999937,
+        "p90_latency_ms": 169.83781069999964,
+        "throughput_items_per_s": 47.87384017543645,
+        "peak_memory_mb": 14.77734375
+      },
+      "latency_samples_ms": [
+        168.74534250001716,
+        169.5721810000066,
+        168.83161350000364,
+        166.5423505000092,
+        166.3080280000031,
+        165.825816999984,
+        165.242378500011,
+        166.6547689999902,
+        166.5161395000041,
+        166.4158619999796
+      ],
+      "validation": {
+        "max_abs_diff": 4.887580871582031e-06,
+        "mean_abs_diff": 5.407102889876114e-07,
+        "cosine_similarity": 1.0,
+        "top_k_agreement": 1.0
+      }
+    },
+    {
+      "model": "distilbert",
+      "config": "eager_bf16",
+      "device": "cpu",
+      "precision": "bf16",
+      "mode": "eager",
+      "is_baseline": false,
+      "metrics": {
+        "median_latency_ms": 684.5943979999731,
+        "p90_latency_ms": 690.6638112000223,
+        "throughput_items_per_s": 11.68575148054354,
+        "peak_memory_mb": 0.0
+      },
+      "latency_samples_ms": [
+        683.3869644999879,
+        684.0433944999802,
+        685.9252509999862,
+        682.3894350000046,
+        683.2562335000034,
+        682.421627999986,
+        681.7735325000172,
+        687.0708779999859,
+        689.4273080000062,
+        683.8349834999917
+      ],
+      "validation": {
+        "max_abs_diff": 0.021876931190490723,
+        "mean_abs_diff": 0.001847525010816753,
+        "cosine_similarity": 0.9999809265136719,
+        "top_k_agreement": 0.989453125
+      }
+    }
+  ]
+}
