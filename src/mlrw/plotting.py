@@ -36,12 +36,16 @@ def plot_latency_comparison(artifact: RunArtifact, path: str | Path) -> Path:
         heights = [latency.get((model, config), 0.0) for model in models]
         ax.bar(offsets, heights, width=bar_width, label=config)
 
+    # Latency across configurations spans more than an order of magnitude, so a
+    # logarithmic axis keeps every bar legible rather than letting the slowest
+    # configuration flatten the rest.
+    ax.set_yscale("log")
     ax.set_xticks(range(len(models)))
     ax.set_xticklabels(models)
-    ax.set_ylabel("Median latency (ms)")
+    ax.set_ylabel("Median latency (ms, log scale)")
     ax.set_title("Median latency by model and execution configuration")
     ax.legend(title="Configuration")
-    ax.grid(axis="y", linestyle=":", alpha=0.5)
+    ax.grid(axis="y", linestyle=":", alpha=0.5, which="both")
     fig.tight_layout()
     fig.savefig(path, dpi=150)
     plt.close(fig)
