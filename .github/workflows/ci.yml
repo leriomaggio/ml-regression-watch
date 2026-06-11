@@ -1,0 +1,71 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    name: Benchmark, validate, and detect regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Cache Hugging Face hub
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ runner.os }}-distilbert-base-uncased
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install --extra-index-url https://download.pytorch.org/whl/cpu -e ".[dev]"
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Unit tests
+        run: pytest
+
+      - name: Run benchmark suite
+        run: |
+          mlrw run --out artifacts/run.json --device cpu \
+            --warmup 3 --iters 8 --repeats 6
+
+      - name: Validate numerical correctness
+        run: |
+          mlrw validate artifacts/run.json --report reports/validation.md
+
+      - name: Compare against baseline
+        run: |
+          mlrw compare --baseline baselines/cpu_ci.json \
+            --current artifacts/run.json --report reports/regression.md
+
+      - name: Render latency plot
+        if: always()
+        run: |
+          mlrw plot artifacts/run.json --out reports/latency_comparison.png
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-reports
+          path: |
+            artifacts/run.json
+            reports/

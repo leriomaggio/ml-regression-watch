@@ -1,0 +1,54 @@
+name: baseline
+
+# Manually regenerate the committed CPU baseline. The baseline must be produced on
+# the same runner image used by the ci workflow so that latency distributions are
+# comparable; running it here rather than on a developer machine guarantees that.
+
+on:
+  workflow_dispatch:
+    inputs:
+      repeats:
+        description: "Repeat blocks per configuration"
+        required: false
+        default: "10"
+
+jobs:
+  regenerate-baseline:
+    name: Regenerate CPU baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Cache Hugging Face hub
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ runner.os }}-distilbert-base-uncased
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install --extra-index-url https://download.pytorch.org/whl/cpu -e ".[dev]"
+
+      - name: Run benchmark suite
+        run: |
+          mlrw run --out artifacts/run.json --device cpu \
+            --warmup 5 --iters 12 --repeats ${{ github.event.inputs.repeats }}
+
+      - name: Promote run to baseline
+        run: |
+          mlrw update-baseline --from artifacts/run.json --out baselines/cpu_ci.json
+
+      - name: Upload baseline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-baseline
+          path: baselines/cpu_ci.json
