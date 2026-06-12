@@ -1,13 +1,14 @@
-"""Latency comparison plot.
+"""Latency comparison and divergence-by-depth plots.
 
-A single grouped bar chart summarises median latency per configuration for each
-model. The plot is written as a PNG and is used both in the README and as a CI
-artifact.
+A grouped bar chart summarises median latency per configuration for each model, and a
+line chart traces relative error against depth for one or more configurations. The
+plots are written as PNGs and are used both in the README and as CI artifacts.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import matplotlib
 
@@ -15,6 +16,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from .artifacts import RunArtifact  # noqa: E402
+
+if TYPE_CHECKING:
+    from .localize import LocalizationReport
 
 
 def plot_latency_comparison(artifact: RunArtifact, path: str | Path) -> Path:
@@ -44,6 +48,38 @@ def plot_latency_comparison(artifact: RunArtifact, path: str | Path) -> Path:
     ax.set_xticklabels(models)
     ax.set_ylabel("Median latency (ms, log scale)")
     ax.set_title("Median latency by model and execution configuration")
+    ax.legend(title="Configuration")
+    ax.grid(axis="y", linestyle=":", alpha=0.5, which="both")
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    return path
+
+
+def plot_divergence_by_depth(
+    reports: list[LocalizationReport], path: str | Path
+) -> Path:
+    """Render relative error against capture-point depth, one line per configuration."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    for report in reports:
+        points = [layer.point for layer in report.layers]
+        # Relative error spans several orders of magnitude and a log axis cannot show a
+        # genuine zero, so the floor keeps fp32-noise points on the chart.
+        values = [max(layer.relative_error, 1e-12) for layer in report.layers]
+        ax.plot(range(len(points)), values, marker="o", label=report.config)
+
+    if reports:
+        labels = [layer.point for layer in reports[0].layers]
+        ax.set_xticks(range(len(labels)))
+        ax.set_xticklabels(labels, rotation=45, ha="right")
+
+    ax.set_yscale("log")
+    ax.set_ylabel("Relative error (log scale)")
+    ax.set_xlabel("Capture point (depth)")
+    ax.set_title("Divergence from the fp32 eager baseline by depth")
     ax.legend(title="Configuration")
     ax.grid(axis="y", linestyle=":", alpha=0.5, which="both")
     fig.tight_layout()
