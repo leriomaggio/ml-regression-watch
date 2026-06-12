@@ -141,6 +141,13 @@ baseline was found and the job passes.
 
 ## Example output
 
+The figures below were produced on an Apple M3 Pro (12 logical cores, CPU only, no CUDA)
+running Python 3.11, PyTorch 2.12, and Transformers 4.57, with seed 1234. They are
+illustrative: absolute latency and memory depend on the host, so the numbers are not
+meaningful in isolation and should not be compared against results from a different
+machine. The comparisons within a single run, and the relative behaviour across
+configurations, are what carry over.
+
 ### Latency comparison
 
 ![Median latency by model and configuration](docs/latency_comparison.png)
