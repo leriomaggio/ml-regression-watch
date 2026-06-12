@@ -8,6 +8,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Apple MPS as a supported device. `--device auto` now selects an accelerator in the
+  order CUDA, MPS, CPU, and `--device mps` forces the MPS backend. The runner handles
+  MPS synchronisation and memory accounting alongside the existing CPU and CUDA paths.
 - A `--fail-on-regression / --no-fail-on-regression` option on `mlrw compare`. Strict
   gating remains the default for dedicated hardware; the continuous integration
   workflow uses the non-failing mode because shared runners have high latency variance,

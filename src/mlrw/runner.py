@@ -72,16 +72,22 @@ def _move_inputs(inputs: dict[str, torch.Tensor], device: Device) -> dict[str, t
 def _synchronize(device: Device) -> None:
     if device is Device.CUDA:
         torch.cuda.synchronize()
+    elif device is Device.MPS:
+        torch.mps.synchronize()
 
 
-def _peak_memory_mb(device: Device, baseline_rss: int) -> float:
+def _peak_memory_mb(device: Device, baseline_rss: int, mps_peak_bytes: int = 0) -> float:
     """Return peak memory in megabytes for the device.
 
-    On CUDA the peak allocated device memory is reported. On CPU the resident set
-    size delta relative to a baseline is used as a portable approximation.
+    On CUDA the peak allocated device memory is reported. MPS exposes no peak
+    counter, so the maximum of the current allocation sampled across iterations is
+    used. On CPU the resident set size delta relative to a baseline is used as a
+    portable approximation.
     """
     if device is Device.CUDA:
         return torch.cuda.max_memory_allocated() / (1024 * 1024)
+    if device is Device.MPS:
+        return mps_peak_bytes / (1024 * 1024)
     rss = _current_rss()
     return max(rss - baseline_rss, 0) / (1024 * 1024)
 
@@ -121,12 +127,15 @@ def benchmark(
     if device is Device.CUDA:
         torch.cuda.reset_peak_memory_stats()
         torch.cuda.empty_cache()
+    elif device is Device.MPS:
+        torch.mps.empty_cache()
     gc.collect()
     baseline_rss = _current_rss()
 
     all_latencies_ms: list[float] = []
     block_medians_ms: list[float] = []
     reference_logits: torch.Tensor | None = None
+    mps_peak_bytes = 0
 
     with torch.inference_mode(), _autocast(device, config.precision):
         for _ in range(warmup):
@@ -143,6 +152,9 @@ def benchmark(
                 block_latencies_ms.append(elapsed_ms)
                 if reference_logits is None:
                     reference_logits = extract_logits(output).detach().float().cpu()
+                if device is Device.MPS:
+                    # Sampled outside the timed region so it does not inflate latency.
+                    mps_peak_bytes = max(mps_peak_bytes, torch.mps.current_allocated_memory())
             all_latencies_ms.extend(block_latencies_ms)
             block_medians_ms.append(_median(block_latencies_ms))
 
@@ -153,7 +165,7 @@ def benchmark(
         median_latency_ms=median_ms,
         p90_latency_ms=_percentile(all_latencies_ms, 90),
         throughput_items_per_s=(batch_size / (median_ms / 1000.0)) if median_ms > 0 else 0.0,
-        peak_memory_mb=_peak_memory_mb(device, baseline_rss),
+        peak_memory_mb=_peak_memory_mb(device, baseline_rss, mps_peak_bytes),
     )
     return ConfigResult(
         config=config,

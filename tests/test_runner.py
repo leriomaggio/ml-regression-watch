@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import pytest
+import torch
 
 from conftest import make_tiny_input, make_tiny_model
 from mlrw.config import Device, ExecConfig, Mode, Precision
 from mlrw.runner import _median, _percentile, benchmark
+
+mps_available = torch.backends.mps.is_available()
 
 
 def test_benchmark_produces_metrics_and_samples():
@@ -29,6 +32,17 @@ def test_bf16_autocast_runs_and_matches_shape():
     config = ExecConfig(Device.CPU, Precision.BF16, Mode.EAGER)
     result = benchmark(model, inputs, config, warmup=1, iters=3, repeats=2)
     assert result.logits.shape == (4, 8)
+
+
+@pytest.mark.skipif(not mps_available, reason="MPS backend not available on this host")
+def test_benchmark_on_mps():
+    model = make_tiny_model()
+    inputs = make_tiny_input()
+    config = ExecConfig(Device.MPS, Precision.FP32, Mode.EAGER)
+    result = benchmark(model, inputs, config, warmup=1, iters=3, repeats=2)
+    assert result.logits.shape == (4, 8)
+    assert result.metrics.peak_memory_mb >= 0.0
+    assert len(result.latency_samples_ms) == 2
 
 
 def test_median_helper():

@@ -17,6 +17,7 @@ class Device(StrEnum):
 
     CPU = "cpu"
     CUDA = "cuda"
+    MPS = "mps"
 
 
 class Precision(StrEnum):
@@ -87,13 +88,17 @@ def default_configs(
 def resolve_device(requested: str) -> Device:
     """Resolve a requested device string, honouring automatic selection.
 
-    ``auto`` selects CUDA when a CUDA device is visible to PyTorch and CPU otherwise.
-    The import of torch is deferred so that pure-logic consumers (for example the
-    test suite) do not pay the import cost.
+    ``auto`` prefers an accelerator when one is visible to PyTorch, in the order
+    CUDA, then Apple MPS, then CPU. The import of torch is deferred so that
+    pure-logic consumers (for example the test suite) do not pay the import cost.
     """
     requested = requested.lower()
     if requested == "auto":
         import torch
 
-        return Device.CUDA if torch.cuda.is_available() else Device.CPU
+        if torch.cuda.is_available():
+            return Device.CUDA
+        if torch.backends.mps.is_available():
+            return Device.MPS
+        return Device.CPU
     return Device(requested)

@@ -49,9 +49,11 @@ mlrw compare --baseline baselines/cpu_ci.json --current artifacts/run.json \
 mlrw update-baseline --from artifacts/run.json --out baselines/cpu_ci.json
 ```
 
-The harness runs on CPU by default and uses CUDA automatically when a device is
-visible. `--device auto` resolves to the available device; `cpu` and `cuda` force a
-specific device.
+The harness supports CPU, CUDA, and Apple MPS. `--device auto` selects an accelerator
+when one is visible, in the order CUDA, then MPS, then CPU; `cpu`, `cuda`, and `mps`
+force a specific device. Adding a device is a single enum entry, because the runner
+handles device-specific synchronisation and memory accounting behind a uniform
+interface.
 
 ## Reference models and configurations
 
@@ -101,6 +103,14 @@ defined per precision: fp32 compiled output is expected to be nearly identical t
 eager, while bf16 is judged mainly by direction (cosine) and ranking (top-k agreement)
 because its reduced mantissa makes large absolute differences expected rather than
 alarming.
+
+This check earns its place. On the Apple MPS backend, the compiled fp32 configuration
+is not numerically equal to eager fp32: its output is bit-identical to the bf16 output
+and diverges from eager fp32 by a maximum absolute difference of about 0.035, while CPU
+and MPS eager fp32 agree to within 1e-5. In other words, `torch.compile` on MPS computes
+a nominally full-precision path in reduced precision. The harness flags this as a
+tolerance violation on MPS, which is the intended behaviour: a configuration that claims
+fp32 but does not deliver it is exactly what numerical validation should catch.
 
 ### Regression detection
 
