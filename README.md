@@ -30,6 +30,11 @@ test rather than a fixed threshold.
   diff, cosine similarity, top-k agreement) with per-precision tolerances.
 - **Detects regressions** against a stored baseline using a statistical test with an
   effect size, not a single-number threshold.
+- **Localises divergence** through DistilBERT's depth with forward hooks, capturing eight
+  activation boundaries to report where divergence from the fp32 eager baseline first
+  appears and how it propagates. On MPS this both traces eager bf16 amplifying with depth
+  and shows that the compiled fp32 substitution is a whole-graph artifact no per-layer
+  probe can pin down.
 - **Runs in CI** and is itself covered by a pytest suite.
 
 ## Quickstart
@@ -73,6 +78,13 @@ MPS:
 
 ![Median latency by model and configuration, MPS](docs/latency_comparison_mps.png)
 
+Divergence from the fp32 eager baseline through DistilBERT's depth (MPS, log scale). Eager
+bf16 enters at the first block and amplifies; the compiled configurations sit at
+floating-point noise because probing a layer dissolves the whole-graph substitution. The
+full analysis is in [docs/findings.md](docs/findings.md#divergence-localisation-where-reduced-precision-enters-and-how-it-propagates).
+
+![Divergence from the fp32 eager baseline by depth, MPS](docs/divergence_by_depth.png)
+
 ## How it works
 
 - **Numerical validation** compares outputs to the fp32 eager baseline and gates per
@@ -96,9 +108,10 @@ mlrw/
   validate.py    Pairwise numerical comparison against the fp32 eager baseline
   compare.py     Mann-Whitney U regression detection with effect size
   hardware.py    Hardware and library-version introspection
-  plotting.py    Latency comparison plot
+  localize.py    Per-layer divergence capture with forward hooks
+  plotting.py    Latency comparison and divergence-by-depth plots
   reporting.py   Shared Markdown helpers
-  cli.py         Typer commands: run / validate / compare / update-baseline / plot
+  cli.py         Typer commands: run / validate / compare / update-baseline / plot / localize
 ```
 
 The commands compose through a single JSON artifact, so each step is independently

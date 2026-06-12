@@ -138,6 +138,87 @@ The cosine similarity remains 0.99999 and top-k agreement remains high, so the o
 are directionally fine; whether the precision loss matters depends on the application,
 which is why the harness reports the magnitude rather than only a pass or fail.
 
+## Divergence localisation: where reduced precision enters and how it propagates
+
+The validation above compares only final outputs. Localisation captures activations at
+eight depth boundaries (the embedding output, the six transformer block outputs, and the
+final hidden state) and asks where divergence from the fp32 eager baseline first appears.
+The runs below are on MPS with a first-divergence threshold of `1e-3`. See
+[methodology.md](methodology.md#divergence-localisation) for the capture mechanism and the
+metric definitions.
+
+![Divergence from the fp32 eager baseline by depth, MPS](divergence_by_depth.png)
+
+The `compile_fp32` and `compile_bf16` lines overlap exactly, near floating-point noise;
+the `eager_bf16` line is the only one that diverges. The reasons are different in each
+case and are the substance of this section.
+
+### eager_bf16: divergence enters at the first block and amplifies with depth
+
+| Capture point       | Max abs diff | Mean abs diff | Cosine   | Relative error |
+| ---                 | ---          | ---           | ---      | ---            |
+| `embeddings`        | 0.000e+00    | 0.000e+00     | 1.000000 | 0.000e+00      |
+| `block_0`           | 1.541e-02    | 1.097e-03     | 0.999997 | 2.275e-03      |
+| `block_1`           | 1.371e-02    | 1.717e-03     | 0.999995 | 3.219e-03      |
+| `block_2`           | 1.769e-02    | 2.057e-03     | 0.999993 | 3.706e-03      |
+| `block_3`           | 4.505e-02    | 2.781e-03     | 0.999990 | 4.425e-03      |
+| `block_4`           | 3.303e-01    | 2.859e-03     | 0.999993 | 3.846e-03      |
+| `block_5`           | 2.823e-02    | 1.877e-03     | 0.999981 | 6.406e-03      |
+| `last_hidden_state` | 2.823e-02    | 1.877e-03     | 0.999981 | 6.406e-03      |
+
+First divergence is `block_0`. The embedding output is bit-identical to the baseline,
+because autocast leaves the embedding lookup and its layer norm in fp32; reduced precision
+first bites at `block_0`, the first block whose matrix multiplications run in bf16, at a
+relative error of `2.3e-3`.
+
+From there the relative error grows with depth to `6.4e-3` at the final hidden state, an
+amplification of about 2.8 times, though not strictly monotonically: it dips at `block_4`.
+The maximum absolute difference tells a sharper story about the layer norm boundaries. A
+worst-case element grows to `4.5e-2` at `block_3` and `3.3e-1` at `block_4`, and then the
+`block_5` output layer norm pulls it back to `2.8e-2`. The per-block layer norm therefore
+resets the worst-case outlier, but it does not stop the normalised error from climbing:
+the divergence is genuinely propagated and amplified through depth, which is exactly the
+behaviour a per-layer view exists to expose and a final-output comparison hides.
+
+### compile_fp32 and compile_bf16: the substitution has no single layer to localise
+
+| Capture point       | Relative error (hooked) |
+| ---                 | ---                     |
+| `embeddings`        | 4.636e-07               |
+| `block_0`           | 6.286e-07               |
+| `block_1`           | 8.252e-07               |
+| `block_2`           | 9.359e-07               |
+| `block_3`           | 1.082e-06               |
+| `block_4`           | 8.728e-07               |
+| `block_5`           | 1.299e-06               |
+| `last_hidden_state` | 1.299e-06               |
+
+First divergence is none: every hooked capture point sits at fp32 noise. This is not
+evidence that compiled fp32 is faithful. It is the observer effect described in the
+methodology. The probe-effect contrast the command records for each compiled target is:
+
+```
+compile_fp32   hooked final divergence: 5.96e-06    un-hooked final divergence: 1.20e-02
+compile_bf16   hooked final divergence: 5.96e-06    un-hooked final divergence: 1.20e-02
+```
+
+With hooks attached the final hidden state matches eager fp32 to `6e-6`; with no hooks it
+diverges by `1.2e-2`. The act of capturing an intermediate activation forces a graph break
+that suppresses the reduced-precision substitution. The substitution is a property of the
+fully fused whole-graph compilation, so it cannot be attributed to any one block: the
+moment a probe reads a block boundary, the substitution is gone.
+
+Two further points are worth stating plainly. First, `compile_fp32` and `compile_bf16`
+produce identical curves and identical un-hooked divergence (`1.20e-2` in both cases): on
+MPS the compiled output does not depend on the requested precision, which reinforces that
+the compiler chooses the numerics rather than honouring the configuration. Second, this
+sharpens the headline finding rather than replacing it. The validation established that
+compiled fp32 on MPS runs in reduced precision; the localisation establishes that the
+reduced precision is not introduced at an identifiable depth but is a whole-graph
+compilation artifact, invisible to any per-layer probe. The faithful `eager_bf16` curve
+above shows, by contrast, what genuine reduced-precision propagation looks like when it
+can be observed.
+
 ## Regression detection example
 
 To illustrate a detected regression, an 18 percent slowdown was injected into one

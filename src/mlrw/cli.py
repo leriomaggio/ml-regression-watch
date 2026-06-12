@@ -1,10 +1,11 @@
 """Command-line interface for ml-regression-watch.
 
-Four commands cover the workflow: ``run`` benchmarks the models and writes an
+The core commands cover the workflow: ``run`` benchmarks the models and writes an
 artifact, ``validate`` checks numerical correctness, ``compare`` detects performance
 regressions against a baseline, and ``update-baseline`` promotes a run to the stored
-baseline. The commands compose through the JSON artifact, so each can be invoked
-independently in a CI pipeline.
+baseline. These compose through the JSON artifact, so each can be invoked independently
+in a CI pipeline. ``plot`` renders the latency chart, and ``localize`` traces where
+divergence first appears through DistilBERT's depth by running the model directly.
 """
 
 from __future__ import annotations

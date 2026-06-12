@@ -15,6 +15,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Per-layer divergence localisation for DistilBERT. A new `mlrw localize` command captures
+  activations at eight depth boundaries with forward hooks and reports where divergence
+  from the fp32 eager baseline first appears, with a relative-error-versus-depth plot
+  (`docs/divergence_by_depth.png`). Because hooks force a graph break that suppresses the
+  MPS compiled reduced-precision substitution, compiled targets also run one un-hooked
+  pass and the report records the contrast.
 - Apple MPS as a supported device. `--device auto` now selects an accelerator in the
   order CUDA, MPS, CPU, and `--device mps` forces the MPS backend. The runner handles
   MPS synchronisation and memory accounting alongside the existing CPU and CUDA paths.
