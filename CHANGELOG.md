@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- A `--fail-on-regression / --no-fail-on-regression` option on `mlrw compare`. Strict
+  gating remains the default for dedicated hardware; the continuous integration
+  workflow uses the non-failing mode because shared runners have high latency variance,
+  and publishes the regression report to the job summary instead.
+
 ## [0.1.0]
 
 ### Added

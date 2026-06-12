@@ -111,6 +111,14 @@ def compare(
         0.05, "--margin", help="Relative slowdown margin before flagging."
     ),
     report: Path | None = typer.Option(None, "--report", "-r", help="Markdown report output."),
+    fail_on_regression: bool = typer.Option(
+        True,
+        "--fail-on-regression/--no-fail-on-regression",
+        help=(
+            "Exit non-zero when a regression is detected. Disable on shared CI runners "
+            "where latency variance is high; keep enabled on dedicated hardware."
+        ),
+    ),
 ) -> None:
     """Detect performance regressions against a stored baseline."""
     from .compare import CompareReport, detect_regressions, render_markdown
@@ -132,7 +140,9 @@ def compare(
         report.write_text(markdown, encoding="utf-8")
         typer.echo(f"Wrote regression report to {report}")
     if report_obj.has_regression:
-        raise typer.Exit(code=1)
+        if fail_on_regression:
+            raise typer.Exit(code=1)
+        typer.echo("Regression detected; not failing because --no-fail-on-regression is set.")
 
 
 @app.command(name="update-baseline")

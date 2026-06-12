@@ -119,9 +119,22 @@ The report includes the rank-biserial effect size alongside the relative change.
 
 The `ci` workflow runs on every push and pull request. It installs the package, lints,
 runs the unit tests, benchmarks the models on CPU with reduced repeats, validates
-numerical correctness, compares against the committed CPU baseline, and uploads the
-JSON artifact and Markdown reports. The job fails on a tolerance violation or a detected
-regression.
+numerical correctness, compares against the committed CPU baseline, and uploads the JSON
+artifact and Markdown reports.
+
+The two checks are gated differently, by design:
+
+- **Numerical correctness is a hard gate.** Tolerance violations are independent of the
+  host, so the job fails on any divergence beyond the per-precision tolerances.
+- **Performance regression is report-only on shared runners.** Regression detection
+  assumes a stable latency distribution. That assumption holds on dedicated hardware but
+  not on shared GitHub runners, where the same code can vary several-fold between runs
+  due to noisy neighbours and CPU contention. Failing the job on that noise would make
+  the signal worthless. The comparison therefore runs with `--no-fail-on-regression`:
+  the report is produced and published to the job summary, but runner noise does not
+  fail the build. On dedicated hardware, removing that flag restores strict gating, and
+  the `compare` command exits non-zero on a detected regression. This separation is the
+  point: a microbenchmark regression gate is only meaningful on controlled hardware.
 
 The committed baseline must be produced on the same runner image as the comparison, or
 hardware differences would masquerade as regressions. The `baseline` workflow

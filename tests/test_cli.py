@@ -141,6 +141,34 @@ def test_compare_detects_regression_exits_nonzero(tmp_path):
     assert "REGRESSION" in result.stdout
 
 
+def test_compare_no_fail_on_regression_exits_zero(tmp_path):
+    baseline = save_artifact(
+        make_artifact(
+            [make_record(is_baseline=True, samples=[10.0, 10.1, 9.9, 10.0, 10.2, 9.8])]
+        ),
+        tmp_path / "baseline.json",
+    )
+    current = save_artifact(
+        make_artifact(
+            [make_record(is_baseline=True, samples=[14.0, 14.1, 13.9, 14.0, 14.2, 13.8])]
+        ),
+        tmp_path / "run.json",
+    )
+    result = runner.invoke(
+        cli_module.app,
+        [
+            "compare",
+            "--baseline",
+            str(baseline),
+            "--current",
+            str(current),
+            "--no-fail-on-regression",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "REGRESSION" in result.stdout
+
+
 def test_update_baseline(tmp_path):
     source = save_artifact(make_artifact([make_record(is_baseline=True)]), tmp_path / "run.json")
     out = tmp_path / "baselines" / "cpu_ci.json"

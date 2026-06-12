@@ -47,14 +47,30 @@ jobs:
           mlrw run --out artifacts/run.json --device cpu \
             --warmup 3 --iters 8 --repeats 6
 
+      # Numerical correctness is hardware-independent, so it is a hard gate: the job
+      # fails on any tolerance violation.
       - name: Validate numerical correctness
         run: |
           mlrw validate artifacts/run.json --report reports/validation.md
 
+      # Performance regression detection assumes a stable latency distribution, which
+      # holds on dedicated hardware but not on shared GitHub runners, where the same
+      # code can vary several-fold between runs. The check therefore runs in
+      # report-only mode here: the report is produced and surfaced, but runner noise
+      # does not fail the job. On dedicated hardware, drop --no-fail-on-regression to
+      # restore strict gating.
       - name: Compare against baseline
         run: |
           mlrw compare --baseline baselines/cpu_ci.json \
-            --current artifacts/run.json --report reports/regression.md
+            --current artifacts/run.json --report reports/regression.md \
+            --no-fail-on-regression
+
+      - name: Publish regression report to job summary
+        if: always()
+        run: |
+          if [ -f reports/regression.md ]; then
+            cat reports/regression.md >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Render latency plot
         if: always()
