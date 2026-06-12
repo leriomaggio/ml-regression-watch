@@ -8,6 +8,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Version-stamped the MPS compiled-fp32 reduced-precision finding. The substitution is a
+  backend behaviour that ResNet-18 still triggers, but the DistilBERT case depends on the
+  attention path: it reproduced under Transformers 4.57.6 and no longer does under the
+  pinned 5.0.0rc3, where compiled fp32 matches eager fp32 to about 6e-6 and passes
+  validation. The findings, methodology, and README now document this across both versions
+  rather than presenting the result as timeless.
 - Restructured the documentation: the README now leads with the key findings and stays
   scannable, while the full experimentation narrative moved to `docs/findings.md` and the
   measurement and gating detail to `docs/methodology.md`. Added per-device latency charts
@@ -15,6 +21,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Per-layer divergence localisation for DistilBERT. A new `mlrw localize` command captures
+  activations at eight depth boundaries with forward hooks and reports where divergence
+  from the fp32 eager baseline first appears, with a relative-error-versus-depth plot
+  (`docs/divergence_by_depth.png`). Because hooks force a graph break that suppresses the
+  MPS compiled reduced-precision substitution, compiled targets also run one un-hooked
+  pass and the report records the contrast.
 - Apple MPS as a supported device. `--device auto` now selects an accelerator in the
   order CUDA, MPS, CPU, and `--device mps` forces the MPS backend. The runner handles
   MPS synchronisation and memory accounting alongside the existing CPU and CUDA paths.

@@ -39,6 +39,9 @@ jobs:
       - name: Lint
         run: ruff check .
 
+      # The suite includes the divergence localisation tests, which exercise hook
+      # capture and the metric logic on a tiny synthetic module and never download
+      # DistilBERT, so they stay fast and self-contained on the runner.
       - name: Unit tests
         run: pytest
 

@@ -1,10 +1,11 @@
 """Command-line interface for ml-regression-watch.
 
-Four commands cover the workflow: ``run`` benchmarks the models and writes an
+The core commands cover the workflow: ``run`` benchmarks the models and writes an
 artifact, ``validate`` checks numerical correctness, ``compare`` detects performance
 regressions against a baseline, and ``update-baseline`` promotes a run to the stored
-baseline. The commands compose through the JSON artifact, so each can be invoked
-independently in a CI pipeline.
+baseline. These compose through the JSON artifact, so each can be invoked independently
+in a CI pipeline. ``plot`` renders the latency chart, and ``localize`` traces where
+divergence first appears through DistilBERT's depth by running the model directly.
 """
 
 from __future__ import annotations
@@ -174,6 +175,57 @@ def plot(
 
 
 @app.command()
+def localize(
+    config: str = typer.Argument(
+        ..., help="Target configuration to localise, for example eager_bf16 or compile_fp32."
+    ),
+    device: str = typer.Option("auto", "--device", "-d", help="Device: auto, cpu, cuda, or mps."),
+    threshold: float = typer.Option(
+        1.0e-3, "--threshold", "-t", help="Relative-error threshold for first divergence."
+    ),
+    report: Path | None = typer.Option(None, "--report", "-r", help="Markdown report output."),
+    plot: Path | None = typer.Option(None, "--plot", "-p", help="Depth plot PNG output."),
+    seed: int = typer.Option(1234, help="Random seed for determinism."),
+) -> None:
+    """Localise where divergence first appears across DistilBERT's depth.
+
+    Divergence is localised for DistilBERT only, where the transformer numerics are
+    interesting. The target configuration is captured at eight depth boundaries and
+    compared against the fp32 eager baseline.
+    """
+    from .localize import localize_run, render_markdown
+    from .models import make_distilbert_input, set_determinism
+    from .plotting import plot_divergence_by_depth
+
+    target_config = _resolve_localize_config(config, device)
+    set_determinism(seed)
+
+    typer.echo(f"Localising {target_config.name} on {target_config.device.value} ...")
+
+    def model_factory():
+        from .models import load_distilbert
+
+        return load_distilbert()
+
+    report_obj = localize_run(
+        target_config,
+        model_factory,
+        make_distilbert_input,
+        threshold=threshold,
+    )
+    markdown = render_markdown(report_obj)
+    typer.echo(markdown)
+
+    if report is not None:
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(markdown, encoding="utf-8")
+        typer.echo(f"Wrote localisation report to {report}")
+    if plot is not None:
+        written = plot_divergence_by_depth([report_obj], plot)
+        typer.echo(f"Wrote depth plot to {written}")
+
+
+@app.command()
 def version() -> None:
     """Print the installed version."""
     typer.echo(__version__)
@@ -193,6 +245,35 @@ def _record_from_result(model_key: str, result):
         metrics=result.metrics,
         latency_samples_ms=list(result.latency_samples_ms),
     )
+
+
+def _resolve_localize_config(name: str, device: str):
+    """Parse a ``mode_precision`` configuration name into an ExecConfig.
+
+    The fp32 eager baseline is not a valid target because it is the reference the
+    target is compared against.
+    """
+    from .config import ExecConfig, Mode, Precision
+
+    parts = name.split("_")
+    if len(parts) != 2:
+        raise typer.BadParameter(
+            f"Configuration {name!r} is not of the form mode_precision, for example eager_bf16."
+        )
+    mode_part, precision_part = parts
+    try:
+        mode = Mode(mode_part)
+        precision = Precision(precision_part)
+    except ValueError as error:
+        raise typer.BadParameter(f"Unknown configuration {name!r}: {error}") from error
+
+    resolved = resolve_device(device)
+    config = ExecConfig(resolved, precision, mode)
+    if config.is_baseline:
+        raise typer.BadParameter(
+            "The fp32 eager configuration is the baseline; choose a non-baseline target."
+        )
+    return config
 
 
 def _build_metadata(seed: int) -> RunMetadata:
