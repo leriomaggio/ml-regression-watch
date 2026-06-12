@@ -1,4 +1,4 @@
-# ml-regression-watch
+# Numerical Validation and Performance Regression Detection for ML Models
 
 Benchmarking, numerical validation, and CI regression detection for ML models across
 execution configurations.
