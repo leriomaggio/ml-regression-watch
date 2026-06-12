@@ -10,7 +10,10 @@ for how the numbers are measured.
 All results below were produced on a single machine:
 
 - **Hardware:** Apple M3 Pro, 12 logical cores. CPU and MPS (Metal) backends. No CUDA.
-- **Software:** Python 3.11, PyTorch 2.12, torchvision 0.27, Transformers 4.57, with seed 1234.
+- **Software:** Python 3.11, PyTorch 2.12, torchvision 0.27, with seed 1234. The latency and
+  validation tables below were produced with Transformers 4.57.6; the project now pins
+  Transformers 5.0.0rc3, and the one result that differs between the two is called out
+  explicitly where it appears.
 - **Models:** torchvision ResNet-18 (convolutional, vision) and Hugging Face DistilBERT
   (transformer, text), batch size 8.
 - **Configurations:** `eager_fp32` (baseline), `eager_bf16`, `compile_fp32`, `compile_bf16`.
@@ -20,6 +23,13 @@ Absolute latency and memory depend on the host, so the numbers below are illustr
 They should not be compared against results from a different machine; the comparisons
 within a single run, and the relative behaviour across configurations, are what carry
 over.
+
+One finding is library-version sensitive, and that is itself instructive. The DistilBERT
+compiled fp32 substitution described below reproduces with Transformers 4.57.6 but not with
+the pinned 5.0.0rc3, because the 5.0 attention refactor changes the graph that the compiler
+sees. The ResNet-18 substitution does not depend on Transformers and reproduces under both.
+A numerical check that is rerun on every dependency change is exactly what surfaces this
+kind of drift.
 
 ## Latency
 
@@ -92,6 +102,9 @@ noise (about 1e-6), and bf16 diverges as expected but preserves direction and ra
 
 ### MPS: compiled fp32 fails the fp32 tolerance
 
+The table below is the Transformers 4.57.6 result. The DistilBERT rows change under the
+pinned 5.0.0rc3; that change is the subject of the version note that follows.
+
 | Model      | Config         | Max abs diff | Mean abs diff | Cosine  | Top-5 agree | Status |
 | ---        | ---            | ---          | ---           | ---     | ---         | ---    |
 | resnet18   | `compile_fp32` | 3.507e-02    | 6.338e-03     | 0.99999 | 0.975       | FAIL   |
@@ -104,6 +117,12 @@ noise (about 1e-6), and bf16 diverges as expected but preserves direction and ra
 `compile_fp32` fails on both models because its absolute difference from the fp32 eager
 baseline is far larger than fp32 should produce. The bf16 configurations show the same
 divergence but pass, because the bf16 tolerance expects it.
+
+**Version note (Transformers 5.0.0rc3).** Under the pinned version the DistilBERT
+`compile_fp32` and `compile_bf16` rows no longer fail: their max absolute difference from
+the fp32 eager baseline drops from `1.201e-02` to `5.96e-06`, which passes the fp32
+tolerance. The ResNet-18 rows are unchanged, because they do not depend on Transformers.
+The cause is the 5.0 attention refactor, detailed in the headline section below.
 
 ## Headline finding: torch.compile on MPS computes fp32 in reduced precision
 
@@ -138,6 +157,34 @@ The cosine similarity remains 0.99999 and top-k agreement remains high, so the o
 are directionally fine; whether the precision loss matters depends on the application,
 which is why the harness reports the magnitude rather than only a pass or fail.
 
+The experiment above was run with Transformers 4.57.6, the version under which both models
+exhibit the substitution.
+
+### Version sensitivity: the DistilBERT substitution depends on the attention path
+
+The substitution is a property of the MPS compiler backend, not of any one model, but
+whether a given model triggers it depends on the exact operations the compiler is handed.
+Upgrading to the pinned Transformers 5.0.0rc3 makes this concrete:
+
+```
+MPS eager_fp32 vs MPS compile_fp32, resnet18    max abs diff: 0.0350695   (still diverges)
+MPS compile_fp32 == MPS eager_bf16, resnet18    True                      (still bit-identical)
+MPS eager_fp32 vs MPS compile_fp32, distilbert  max abs diff: 5.96e-06    (now full precision)
+```
+
+- **ResNet-18 is unchanged.** It does not depend on Transformers, so the convolutional
+  compiled path still computes fp32 in reduced precision and still fails validation.
+- **DistilBERT no longer diverges.** Transformers 5.0 replaced `DistilBertSdpaAttention`
+  with `DistilBertSelfAttention` dispatched through the unified `sdpa` interface. The
+  compiled graph that results no longer triggers the substitution, so compiled fp32 now
+  matches eager fp32 to about `6e-6` and passes validation.
+
+The headline holds for the backend and for the convolutional model; for the transformer it
+held under one library version and not the next. That a dependency bump silently moved a
+configuration from failing to passing, with no code change, is precisely the drift a
+numerical check rerun on every change exists to surface. It is also why the tables above
+are version stamped rather than presented as timeless.
+
 ## Divergence localisation: where reduced precision enters and how it propagates
 
 The validation above compares only final outputs. Localisation captures activations at
@@ -154,6 +201,10 @@ the `eager_bf16` line is the only one that diverges. The reasons are different i
 case and are the substance of this section.
 
 ### eager_bf16: divergence enters at the first block and amplifies with depth
+
+This curve is identical under Transformers 4.57.6 and 5.0.0rc3. Autocast bf16 arithmetic
+does not depend on the attention refactor, so the eager reduced-precision result is stable
+across the upgrade and is the version-independent core of this section.
 
 | Capture point       | Max abs diff | Mean abs diff | Cosine   | Relative error |
 | ---                 | ---          | ---           | ---      | ---            |
@@ -180,7 +231,10 @@ resets the worst-case outlier, but it does not stop the normalised error from cl
 the divergence is genuinely propagated and amplified through depth, which is exactly the
 behaviour a per-layer view exists to expose and a final-output comparison hides.
 
-### compile_fp32 and compile_bf16: the substitution has no single layer to localise
+### compile_fp32 and compile_bf16: the probe-effect contrast, and what it reveals across versions
+
+The hooked per-layer curve for both compiled configurations sits at floating-point noise at
+every depth, and is identical under both library versions:
 
 | Capture point       | Relative error (hooked) |
 | ---                 | ---                     |
@@ -193,31 +247,34 @@ behaviour a per-layer view exists to expose and a final-output comparison hides.
 | `block_5`           | 1.299e-06               |
 | `last_hidden_state` | 1.299e-06               |
 
-First divergence is none: every hooked capture point sits at fp32 noise. This is not
-evidence that compiled fp32 is faithful. It is the observer effect described in the
-methodology. The probe-effect contrast the command records for each compiled target is:
+A flat noise-level curve cannot, on its own, distinguish a configuration that is genuinely
+faithful from one whose divergence the hooks have suppressed. That is why a compiled target
+also runs one un-hooked whole-model pass, and the report records the probe-effect contrast
+between the hooked and un-hooked final divergence. The contrast is exactly what separates
+the two library versions:
 
 ```
-compile_fp32   hooked final divergence: 5.96e-06    un-hooked final divergence: 1.20e-02
-compile_bf16   hooked final divergence: 5.96e-06    un-hooked final divergence: 1.20e-02
+Transformers 4.57.6   compile_fp32   hooked: 5.96e-06    un-hooked: 1.20e-02
+Transformers 5.0.0rc3  compile_fp32   hooked: 5.96e-06    un-hooked: 5.96e-06
 ```
 
-With hooks attached the final hidden state matches eager fp32 to `6e-6`; with no hooks it
-diverges by `1.2e-2`. The act of capturing an intermediate activation forces a graph break
-that suppresses the reduced-precision substitution. The substitution is a property of the
-fully fused whole-graph compilation, so it cannot be attributed to any one block: the
-moment a probe reads a block boundary, the substitution is gone.
+- **Under 4.57.6 the contrast is large.** Hooks report `6e-6` while the un-hooked model
+  diverges by `1.2e-2`. Capturing an intermediate activation forces a graph break that
+  suppresses the reduced-precision substitution. The substitution is a property of the
+  fully fused whole-graph compilation, so it cannot be attributed to any one block: the
+  moment a probe reads a block boundary, it is gone. This is the observer effect described
+  in the methodology, and it is why the flat hooked curve above is not evidence of fidelity
+  under that version.
+- **Under 5.0.0rc3 the contrast vanishes.** Hooked and un-hooked both read `6e-6`. There is
+  no substitution to suppress, consistent with the version note in the headline section:
+  the 5.0 attention refactor removed it. The same flat curve now does mean what it appears
+  to mean.
 
-Two further points are worth stating plainly. First, `compile_fp32` and `compile_bf16`
-produce identical curves and identical un-hooked divergence (`1.20e-2` in both cases): on
-MPS the compiled output does not depend on the requested precision, which reinforces that
-the compiler chooses the numerics rather than honouring the configuration. Second, this
-sharpens the headline finding rather than replacing it. The validation established that
-compiled fp32 on MPS runs in reduced precision; the localisation establishes that the
-reduced precision is not introduced at an identifiable depth but is a whole-graph
-compilation artifact, invisible to any per-layer probe. The faithful `eager_bf16` curve
-above shows, by contrast, what genuine reduced-precision propagation looks like when it
-can be observed.
+The mechanism earns its place precisely because the flat curve looks the same in both
+cases. Without the un-hooked probe the report could not tell a suppressed substitution from
+a genuinely faithful path, and a reader would draw the wrong conclusion under 4.57.6. The
+faithful `eager_bf16` curve above shows, for contrast, what reduced-precision propagation
+looks like when it is directly observable rather than dissolved by the act of observing.
 
 ## Regression detection example
 

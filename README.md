@@ -8,10 +8,13 @@ test rather than a fixed threshold.
 ## TL;DR
 
 - **A compiled configuration can silently change precision.** On the Apple MPS backend,
-  `torch.compile` runs nominally-fp32 models in reduced precision: the compiled fp32
-  output is bit-identical to bf16 and diverges from eager fp32 by about 0.035, while CPU
-  and MPS eager fp32 agree to 7.6e-6. The harness catches this; a latency benchmark alone
-  would not. See [docs/findings.md](docs/findings.md#headline-finding-torchcompile-on-mps-computes-fp32-in-reduced-precision).
+  `torch.compile` runs ResNet-18 in reduced precision: the compiled fp32 output is
+  bit-identical to bf16 and diverges from eager fp32 by about 0.035, while CPU and MPS
+  eager fp32 agree to 7.6e-6. The harness catches this; a latency benchmark alone would
+  not. Whether a given model triggers it depends on the exact compiled graph: DistilBERT
+  showed the same substitution under Transformers 4.57.6, but the 5.0.0rc3 attention
+  refactor removed it, and the harness flips that configuration from fail to pass on the
+  dependency bump alone. See [docs/findings.md](docs/findings.md#headline-finding-torchcompile-on-mps-computes-fp32-in-reduced-precision).
 - **Reduced precision is not automatically faster.** Eager bf16 on CPU is about 28 times
   slower than fp32 (unoptimised kernels); `torch.compile` helps ResNet-18 on MPS but
   makes DistilBERT about 2.4 times slower. Whether a configuration pays off is model and
@@ -32,9 +35,9 @@ test rather than a fixed threshold.
   effect size, not a single-number threshold.
 - **Localises divergence** through DistilBERT's depth with forward hooks, capturing eight
   activation boundaries to report where divergence from the fp32 eager baseline first
-  appears and how it propagates. On MPS this both traces eager bf16 amplifying with depth
-  and shows that the compiled fp32 substitution is a whole-graph artifact no per-layer
-  probe can pin down.
+  appears and how it propagates. On MPS it traces eager bf16 amplifying with depth, and a
+  per-target un-hooked probe distinguishes a faithful compiled path from one whose
+  divergence the hooks themselves suppress.
 - **Runs in CI** and is itself covered by a pytest suite.
 
 ## Quickstart
@@ -80,8 +83,9 @@ MPS:
 
 Divergence from the fp32 eager baseline through DistilBERT's depth (MPS, log scale). Eager
 bf16 enters at the first block and amplifies; the compiled configurations sit at
-floating-point noise because probing a layer dissolves the whole-graph substitution. The
-full analysis is in [docs/findings.md](docs/findings.md#divergence-localisation-where-reduced-precision-enters-and-how-it-propagates).
+floating-point noise in the hooked curve, and the un-hooked probe is what tells a faithful
+path apart from one whose divergence the hooks suppress. The full analysis, including the
+library-version sensitivity, is in [docs/findings.md](docs/findings.md#divergence-localisation-where-reduced-precision-enters-and-how-it-propagates).
 
 ![Divergence from the fp32 eager baseline by depth, MPS](docs/divergence_by_depth.png)
 

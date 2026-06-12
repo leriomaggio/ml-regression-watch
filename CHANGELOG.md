@@ -8,6 +8,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Version-stamped the MPS compiled-fp32 reduced-precision finding. The substitution is a
+  backend behaviour that ResNet-18 still triggers, but the DistilBERT case depends on the
+  attention path: it reproduced under Transformers 4.57.6 and no longer does under the
+  pinned 5.0.0rc3, where compiled fp32 matches eager fp32 to about 6e-6 and passes
+  validation. The findings, methodology, and README now document this across both versions
+  rather than presenting the result as timeless.
 - Restructured the documentation: the README now leads with the key findings and stays
   scannable, while the full experimentation narrative moved to `docs/findings.md` and the
   measurement and gating detail to `docs/methodology.md`. Added per-device latency charts
