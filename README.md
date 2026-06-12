@@ -1,33 +1,36 @@
 # Numerical Validation and Performance Regression Detection for ML Models
 
-Benchmarking, numerical validation, and CI regression detection for ML models across
-execution configurations.
+A small pytest-based harness that benchmarks ML models across execution configurations,
+validates that reduced-precision and compiled configurations stay numerically faithful
+to a full-precision baseline, and detects performance regressions with a statistical
+test rather than a fixed threshold.
 
-`ml-regression-watch` is a small pytest-based harness that benchmarks reference models
-under several execution configurations, validates that reduced-precision and compiled
-configurations remain numerically faithful to a full-precision baseline, and detects
-performance regressions in continuous integration using a statistical test rather than
-a fixed threshold.
+## TL;DR
 
-## Motivation
+- **A compiled configuration can silently change precision.** On the Apple MPS backend,
+  `torch.compile` runs nominally-fp32 models in reduced precision: the compiled fp32
+  output is bit-identical to bf16 and diverges from eager fp32 by about 0.035, while CPU
+  and MPS eager fp32 agree to 7.6e-6. The harness catches this; a latency benchmark alone
+  would not. See [docs/findings.md](docs/findings.md#headline-finding-torchcompile-on-mps-computes-fp32-in-reduced-precision).
+- **Reduced precision is not automatically faster.** Eager bf16 on CPU is about 28 times
+  slower than fp32 (unoptimised kernels); `torch.compile` helps ResNet-18 on MPS but
+  makes DistilBERT about 2.4 times slower. Whether a configuration pays off is model and
+  backend dependent.
+- **Regression gating only means something on controlled hardware.** Detection uses a
+  one-sided Mann-Whitney U test plus a relative margin; on shared CI runners, where
+  latency varies several-fold between runs, it runs report-only while numerical
+  validation stays a hard gate.
 
-A model that runs faster but returns different numbers is not the same model, and a
-configuration that is correct today can regress tomorrow without anyone noticing. Both
-problems are problems of evaluation: deciding, with evidence, whether two runs agree.
+## What it does
 
-I care about the evaluation and reproducibility of machine learning systems, and I built
-this to bring that discipline to the software stack that runs them. A benchmark is only
-trustworthy when its procedure is explicit, so the harness follows a fixed recipe: state
-the comparison, fix the inputs, quantify the divergence, and decide on regressions with a
-defined statistical test rather than an eyeballed threshold.
-
-The harness targets the questions a machine learning quality team asks of an
-accelerated software stack:
-
-- Does a compiled or reduced-precision configuration still produce the right answer,
-  and by how much does it diverge when it does not?
-- Is the current build slower than the established baseline, and is that slowdown real
-  or within measurement noise?
+- **Benchmarks** ResNet-18 and DistilBERT across `eager`/`compile` x `fp32`/`bf16` on
+  CPU, CUDA, or Apple MPS, with warmup, median and p90 latency, throughput, and peak
+  memory.
+- **Validates** each configuration against the fp32 eager baseline (max and mean abs
+  diff, cosine similarity, top-k agreement) with per-precision tolerances.
+- **Detects regressions** against a stored baseline using a statistical test with an
+  effect size, not a single-number threshold.
+- **Runs in CI** and is itself covered by a pytest suite.
 
 ## Quickstart
 
@@ -35,44 +38,52 @@ accelerated software stack:
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# Benchmark the reference models across the configuration matrix.
-mlrw run --out artifacts/run.json --device auto
-
-# Validate numerical correctness against the fp32 eager baseline.
-mlrw validate artifacts/run.json --report reports/validation.md
-
-# Detect performance regressions against a stored baseline.
-mlrw compare --baseline baselines/cpu_ci.json --current artifacts/run.json \
-  --report reports/regression.md
-
-# Promote a run to the stored baseline.
-mlrw update-baseline --from artifacts/run.json --out baselines/cpu_ci.json
+mlrw run --out artifacts/run.json --device auto          # benchmark the matrix
+mlrw validate artifacts/run.json --report reports/validation.md   # numerical check
+mlrw compare --baseline baselines/cpu_ci.json --current artifacts/run.json   # regressions
+mlrw update-baseline --from artifacts/run.json --out baselines/cpu_ci.json   # promote a run
 ```
 
-The harness supports CPU, CUDA, and Apple MPS. `--device auto` selects an accelerator
-when one is visible, in the order CUDA, then MPS, then CPU; `cpu`, `cuda`, and `mps`
-force a specific device. Adding a device is a single enum entry, because the runner
-handles device-specific synchronisation and memory accounting behind a uniform
-interface.
+`--device auto` prefers an accelerator (CUDA, then MPS, then CPU); `cpu`, `cuda`, and
+`mps` force a device.
 
-## Reference models and configurations
+## Configurations
 
-Two reference models exercise distinct compute profiles: a torchvision **ResNet-18**
-(convolutional, vision) and a Hugging Face **DistilBERT** (transformer, text). Inputs
-are generated from fixed seeds so that every run compares like with like.
-
-Each model is benchmarked across the matrix of execution modes and precisions:
-
-| Mode    | Precision | Configuration name |
-| ---     | ---       | ---                |
+| Mode    | Precision | Name                    |
+| ---     | ---       | ---                     |
 | eager   | fp32      | `eager_fp32` (baseline) |
-| eager   | bf16      | `eager_bf16`       |
-| compile | fp32      | `compile_fp32`     |
-| compile | bf16      | `compile_bf16`     |
+| eager   | bf16      | `eager_bf16`            |
+| compile | fp32      | `compile_fp32`          |
+| compile | bf16      | `compile_bf16`          |
 
-The configuration matrix is built from orthogonal device, precision, and mode axes
-(`src/mlrw/config.py`), so adding a precision or a device is a matter of extending an
-enum rather than changing the runner.
+Built from orthogonal device, precision, and mode axes, so adding a device or precision
+is a single enum entry.
+
+## Results at a glance
+
+Median latency by model and configuration (log scale, Apple M3 Pro). Full tables, the
+numerical-divergence analysis, and the MPS precision investigation are in
+[docs/findings.md](docs/findings.md).
+
+CPU:
+
+![Median latency by model and configuration, CPU](docs/latency_comparison_cpu.png)
+
+MPS:
+
+![Median latency by model and configuration, MPS](docs/latency_comparison_mps.png)
+
+## How it works
+
+- **Numerical validation** compares outputs to the fp32 eager baseline and gates per
+  precision: fp32 tight, bf16 judged by direction and ranking. Hardware independent.
+- **Regression detection** treats per-repeat latencies as a sample, applies a one-sided
+  Mann-Whitney U test, and flags a configuration only when the slowdown is both
+  significant (p < 0.05) and beyond a relative margin (default 5 percent).
+- **CI** hard-fails on tolerance violations and runs regression detection report-only on
+  shared runners.
+
+Full detail in [docs/methodology.md](docs/methodology.md).
 
 ## Architecture
 
@@ -90,111 +101,8 @@ mlrw/
   cli.py         Typer commands: run / validate / compare / update-baseline / plot
 ```
 
-The commands compose through a single JSON artifact. `run` produces it; `validate`,
-`compare`, and `plot` consume it. This keeps each step independently runnable in a CI
-pipeline and makes the artifact the durable, reviewable record of a run.
-
-### Numerical validation
-
-Every non-baseline configuration is compared against the fp32 eager output of the same
-model. Four metrics summarise the comparison: maximum absolute difference, mean
-absolute difference, cosine similarity, and top-k prediction agreement. Tolerances are
-defined per precision: fp32 compiled output is expected to be nearly identical to fp32
-eager, while bf16 is judged mainly by direction (cosine) and ranking (top-k agreement)
-because its reduced mantissa makes large absolute differences expected rather than
-alarming.
-
-This check earns its place. On the Apple MPS backend, the compiled fp32 configuration
-is not numerically equal to eager fp32: its output is bit-identical to the bf16 output
-and diverges from eager fp32 by a maximum absolute difference of about 0.035, while CPU
-and MPS eager fp32 agree to within 1e-5. In other words, `torch.compile` on MPS computes
-a nominally full-precision path in reduced precision. The harness flags this as a
-tolerance violation on MPS, which is the intended behaviour: a configuration that claims
-fp32 but does not deliver it is exactly what numerical validation should catch.
-
-### Regression detection
-
-Regression detection treats the per-repeat latency measurements of each configuration
-as a sample rather than a single number. The current sample is compared against the
-baseline sample with a one-sided Mann-Whitney U test. A configuration is flagged as a
-regression only when the slowdown is both statistically significant (p < 0.05) and
-larger than a configurable relative margin (default 5 percent). Requiring both
-conditions avoids flagging differences that are detectable but practically irrelevant.
-The report includes the rank-biserial effect size alongside the relative change.
-
-## Continuous integration
-
-The `ci` workflow runs on every push and pull request. It installs the package, lints,
-runs the unit tests, benchmarks the models on CPU with reduced repeats, validates
-numerical correctness, compares against the committed CPU baseline, and uploads the JSON
-artifact and Markdown reports.
-
-The two checks are gated differently, by design:
-
-- **Numerical correctness is a hard gate.** Tolerance violations are independent of the
-  host, so the job fails on any divergence beyond the per-precision tolerances.
-- **Performance regression is report-only on shared runners.** Regression detection
-  assumes a stable latency distribution. That assumption holds on dedicated hardware but
-  not on shared GitHub runners, where the same code can vary several-fold between runs
-  due to noisy neighbours and CPU contention. Failing the job on that noise would make
-  the signal worthless. The comparison therefore runs with `--no-fail-on-regression`:
-  the report is produced and published to the job summary, but runner noise does not
-  fail the build. On dedicated hardware, removing that flag restores strict gating, and
-  the `compare` command exits non-zero on a detected regression. This separation is the
-  point: a microbenchmark regression gate is only meaningful on controlled hardware.
-
-The committed baseline must be produced on the same runner image as the comparison, or
-hardware differences would masquerade as regressions. The `baseline` workflow
-(`workflow_dispatch`) regenerates the baseline on the runner and uploads it for review
-before it is committed. Until a baseline exists, the comparison step reports that no
-baseline was found and the job passes.
-
-## Example output
-
-The figures below were produced on an Apple M3 Pro (12 logical cores, CPU only, no CUDA)
-running Python 3.11, PyTorch 2.12, and Transformers 4.57, with seed 1234. They are
-illustrative: absolute latency and memory depend on the host, so the numbers are not
-meaningful in isolation and should not be compared against results from a different
-machine. The comparisons within a single run, and the relative behaviour across
-configurations, are what carry over.
-
-### Latency comparison
-
-![Median latency by model and configuration](docs/latency_comparison.png)
-
-### Numerical divergence
-
-Each non-baseline configuration compared against the fp32 eager baseline on CPU. The
-compiled fp32 configuration is numerically identical to the baseline to within
-floating-point noise, while bf16 diverges as expected but preserves direction and
-ranking:
-
-| Model | Config | Max abs diff | Mean abs diff | Cosine | Top-5 agree | Status |
-| --- | --- | --- | --- | --- | --- | --- |
-| resnet18 | compile_bf16 | 4.133e-02 | 7.786e-03 | 0.99999 | 0.950 | PASS |
-| resnet18 | compile_fp32 | 4.530e-06 | 6.608e-07 | 1.00000 | 1.000 | PASS |
-| resnet18 | eager_bf16 | 3.026e-02 | 5.986e-03 | 0.99999 | 0.950 | PASS |
-| distilbert | compile_bf16 | 3.740e-02 | 1.926e-03 | 0.99998 | 0.990 | PASS |
-| distilbert | compile_fp32 | 4.172e-06 | 2.874e-07 | 1.00000 | 1.000 | PASS |
-| distilbert | eager_bf16 | 1.312e-02 | 1.842e-03 | 0.99998 | 0.990 | PASS |
-
-### Regression report
-
-The following report compares a baseline against a run with an 18 percent slowdown
-injected into one configuration, to illustrate a detected regression. Only the affected
-configuration is flagged; the rank-biserial effect size and p-value accompany the
-relative change:
-
-| Model | Config | Baseline ms | Current ms | Delta | p-value | Effect | Status |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| resnet18 | eager_fp32 | 51.17 | 51.17 | +0.0% | 0.521 | +0.00 | PASS |
-| resnet18 | compile_bf16 | 248.32 | 248.32 | +0.0% | 0.521 | +0.00 | PASS |
-| resnet18 | compile_fp32 | 47.09 | 47.09 | +0.0% | 0.521 | +0.00 | PASS |
-| resnet18 | eager_bf16 | 1441.46 | 1441.46 | +0.0% | 0.521 | +0.00 | PASS |
-| distilbert | eager_fp32 | 48.23 | 48.23 | +0.0% | 0.521 | +0.00 | PASS |
-| distilbert | compile_bf16 | 254.36 | 254.36 | +0.0% | 0.521 | +0.00 | PASS |
-| distilbert | compile_fp32 | 46.75 | 55.17 | +18.0% | 0.000 | +1.00 | REGRESSION |
-| distilbert | eager_bf16 | 253.80 | 253.80 | +0.0% | 0.521 | +0.00 | PASS |
+The commands compose through a single JSON artifact, so each step is independently
+runnable in a pipeline.
 
 ## Development
 
@@ -204,9 +112,14 @@ ruff check .
 pytest
 ```
 
-The harness that tests models is itself tested: the suite under `tests/` covers
-configuration parsing, the artifact schema, the comparison metrics, the tolerance
-logic, and the statistical detection on synthetic data with injected regressions.
+The suite under `tests/` covers configuration parsing, the artifact schema, the
+comparison metrics, the tolerance logic, and the statistical detection on synthetic data
+with injected regressions.
+
+## Documentation
+
+- [docs/findings.md](docs/findings.md) — experiments, results, and the MPS precision finding.
+- [docs/methodology.md](docs/methodology.md) — how the harness measures, validates, and compares.
 
 ## License
 

@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Restructured the documentation: the README now leads with the key findings and stays
+  scannable, while the full experimentation narrative moved to `docs/findings.md` and the
+  measurement and gating detail to `docs/methodology.md`. Added per-device latency charts
+  (`docs/latency_comparison_cpu.png`, `docs/latency_comparison_mps.png`).
+
 ### Added
 
 - Apple MPS as a supported device. `--device auto` now selects an accelerator in the
