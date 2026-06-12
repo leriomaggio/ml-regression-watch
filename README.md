@@ -15,14 +15,11 @@ A model that runs faster but returns different numbers is not the same model, an
 configuration that is correct today can regress tomorrow without anyone noticing. Both
 problems are problems of evaluation: deciding, with evidence, whether two runs agree.
 
-This project continues a line of work by the author on the evaluation and
-reproducibility of machine learning systems. DAPPER is a published framework for
-assessing the reproducibility of AI algorithms in digital pathology, and the Data
-Analysis Plan framework developed with the MAQC Consortium and the United States Food
-and Drug Administration codified how predictive analyses should be specified in advance
-so that their results can be trusted. The same principles apply here at the level of the
-software stack: state the comparison, fix the inputs, quantify the divergence, and test
-for regressions with a defined statistical procedure.
+I care about the evaluation and reproducibility of machine learning systems, and I built
+this to bring that discipline to the software stack that runs them. A benchmark is only
+trustworthy when its procedure is explicit, so the harness follows a fixed recipe: state
+the comparison, fix the inputs, quantify the divergence, and decide on regressions with a
+defined statistical test rather than an eyeballed threshold.
 
 The harness targets the questions a machine learning quality team asks of an
 accelerated software stack:
