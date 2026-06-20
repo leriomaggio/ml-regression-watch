@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- `set_determinism` now seeds the MPS generator explicitly when the MPS backend is
+  available, mirroring the existing CUDA handling. Previously only the CPU and CUDA
+  generators were seeded explicitly, leaving on-device MPS random draws unseeded.
+
 ### Changed
 
 - Version-stamped the MPS compiled-fp32 reduced-precision finding. The substitution is a

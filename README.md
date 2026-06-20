@@ -1,6 +1,6 @@
 # Numerical Validation and Performance Regression Detection for ML Models
 
-A small pytest-based harness that benchmarks ML models across execution configurations,
+A small CLI-driven harness that benchmarks ML models across execution configurations,
 validates that reduced-precision and compiled configurations stay numerically faithful
 to a full-precision baseline, and detects performance regressions with a statistical
 test rather than a fixed threshold.
