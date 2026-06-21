@@ -136,7 +136,17 @@ with injected regressions.
 ## Documentation
 
 - [docs/findings.md](docs/findings.md) — experiments, results, and the MPS precision finding.
-- [docs/methodology.md](docs/methodology.md) — how the harness measures, validates, and compares.
+- [docs/methodology.md](docs/methodology.md) — the compass for how the harness measures,
+  validates, and compares, linking to one document per stage:
+  - [docs/benchmarking.md](docs/benchmarking.md) — configuration matrix, measurement, and
+    deterministic input generation with its realism caveats.
+  - [docs/numerical-validation.md](docs/numerical-validation.md) — output comparison,
+    tolerances, and when an exact bit-wise comparison applies instead.
+  - [docs/divergence-localisation.md](docs/divergence-localisation.md) — per-layer
+    divergence capture and the observer effect under `torch.compile`.
+  - [docs/regression-detection.md](docs/regression-detection.md) — statistical latency
+    regression detection.
+  - [docs/ci-and-artifacts.md](docs/ci-and-artifacts.md) — CI gating and the JSON artifact.
 
 ## License
 
