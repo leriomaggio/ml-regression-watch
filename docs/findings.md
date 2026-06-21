@@ -191,7 +191,7 @@ The validation above compares only final outputs. Localisation captures activati
 eight depth boundaries (the embedding output, the six transformer block outputs, and the
 final hidden state) and asks where divergence from the fp32 eager baseline first appears.
 The runs below are on MPS with a first-divergence threshold of `1e-3`. See
-[methodology.md](methodology.md#divergence-localisation) for the capture mechanism and the
+[divergence-localisation.md](divergence-localisation.md) for the capture mechanism and the
 metric definitions.
 
 ![Divergence from the fp32 eager baseline by depth, MPS](divergence_by_depth.png)
@@ -298,10 +298,14 @@ the relative margin.
 
 ## Caveats
 
+- The choice of inputs bounds how far these figures generalise, including the MPS
+  precision finding above. See [limitations.md](limitations.md) for the threats to
+  validity, in particular why the ResNet and DistilBERT divergence figures are not
+  directly comparable.
 - Numbers are single-machine and host dependent. Treat them as relative, not absolute.
 - The MPS finding is specific to this PyTorch version and backend; it is the kind of
   behaviour that can change between releases, which is itself an argument for running the
   validation continuously.
 - On shared CI runners, performance regression detection is report-only because latency
-  variance between runs is several-fold. See [methodology.md](methodology.md) for the
-  gating rationale.
+  variance between runs is several-fold. See [ci-and-artifacts.md](ci-and-artifacts.md) for
+  the gating rationale.
