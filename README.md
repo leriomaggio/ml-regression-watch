@@ -147,6 +147,8 @@ with injected regressions.
   - [docs/regression-detection.md](docs/regression-detection.md) — statistical latency
     regression detection.
   - [docs/ci-and-artifacts.md](docs/ci-and-artifacts.md) — CI gating and the JSON artifact.
+- [docs/limitations.md](docs/limitations.md) — threats to validity: how the choice of
+  inputs bounds the generalisability of the findings.
 
 ## License
 
